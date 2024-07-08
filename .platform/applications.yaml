@@ -1,0 +1,61 @@
+pdfreactor:
+  type: java:17
+  disk: 1024
+  mounts:
+    "fontcache": { source: local, source_path: "fontcache" }
+
+
+  hooks:
+    build: |
+      #!/bin/bash
+      set -e
+
+      # Create the license key file from the env variable PDFREACTOR_LICENSEKEY
+      CONFIG_DIR="$PLATFORM_APP_DIR/config"
+      if [ ! -d "$CONFIG_DIR" ]; then
+        mkdir -p "$CONFIG_DIR"
+      fi
+      echo "$PDFREACTOR_LICENSEKEY" > $CONFIG_DIR/licensekey.txt
+
+      wget -O PDFreactor.tar.gz 'https://www.pdfreactor.com/download/get/?product=pdfreactor&type=unix_installer&jre=false'
+      tar -xzf PDFreactor.tar.gz
+
+      # Force logs to go to STDOUT
+      sed -i 's/^--module=console-capture/#&/' PDFreactor/jetty/start.ini
+      sed -i 's/^jetty.console-capture.append=true/#&/' PDFreactor/jetty/start.ini
+
+      rm PDFreactor.tar.gz
+
+  web:
+    commands:
+      start: |
+        export JETTY_HOME=$PLATFORM_APP_DIR/PDFreactor/jetty/
+        cd $JETTY_HOME
+
+        if [ -z "${PDFREACTOR_MEMORY}" ]; then
+            echo "env variable PDFREACTOR_MEMORY must be set like 2g, 2048m ..."
+            exit 1
+        fi
+
+        if [ -z "${PDFREACTOR_THREADS}" ]; then
+            echo "env variable PDFREACTOR_THREADS must be set"
+            exit 1
+        fi
+
+        if [ -z "${PDFREACTOR_ADMINKEY}" ]; then
+            echo "env variable PDFREACTOR_ADMINKEY must be set"
+            exit 1
+        fi
+
+        if [ -z "${PDFREACTOR_APIKEYS}" ]; then
+            echo "env variable PDFREACTOR_APIKEYS must be set"
+            exit 1
+        fi
+
+        java -jar $JETTY_HOME/start.jar -Xmx$PDFREACTOR_MEMORY -Djetty.http.port=$PORT \
+          -Dcom.realobjects.pdfreactor.webservice.docTempDir=/tmp \
+          -Dcom.realobjects.pdfreactor.webservice.fontCacheDir=$PLATFORM_APP_DIR/fontcache \
+          -Dcom.realobjects.pdfreactor.webservice.licenseKeyPath=$PLATFORM_APP_DIR/config \
+          -Dcom.realobjects.pdfreactor.webservice.adminKey=$PDFREACTOR_ADMINKEY \
+          -Dcom.realobjects.pdfreactor.webservice.apiKeys=$PDFREACTOR_APIKEYS \
+          -Dcom.realobjects.pdfreactor.webservice.threadPoolSize=$PDFREACTOR_THREADS
